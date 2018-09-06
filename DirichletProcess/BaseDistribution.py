@@ -1,6 +1,23 @@
 import numpy as np
+
 class NormalInverseWishart:
+    '''
+    Conjugate Prior of Multivariate Gaussian Distribution
+    
+    To reduce the heavy burden of calculating squared sum of all previous data points ∑_i(x_i * x_i.T)
+    maintain the ∑_i(x_i * x_i.T) so for every new data point, only calculate x_i * x_i.T
+
+    (l, mu, v, psi)  are the instance variables needed for calculating the likelihood of multivariate_t_distribution
+
+    '''
+
     def __init__(self, dim):
+
+        # self.sum: ∑_i(x_i * x_i.T), update when every data point is added or deleted
+        # self.x_hat: mean of x points, calculated using incremental update equation
+        # self.l, self.v, self.psi, self.mu0: initialized hyperparameters
+        # self.num: number of data added for updating the prior
+        
         self.dim = dim
         self.x_hat = np.zeros(dim) # [0 for i in range(dim)]
         self.sum = np.zeros((dim, dim)) #[0 for i in range(dim)]
@@ -12,6 +29,9 @@ class NormalInverseWishart:
         
 
     def additem(self, data):
+
+        # Used for updating the x_hat, num, sum instance variables for later calculating new parameters for likelihood
+
         if self.num == 0:
             self.num += 1
             self.x_hat += data
@@ -22,18 +42,18 @@ class NormalInverseWishart:
             self.sum += np.dot(np.reshape(np.array(data), (dim, -1)), np.reshape(np.array(data), (-1, dim)))
 
     def delitem(self, data):
+
+        # Used for updating the x_hat, num, sum instance variables for later calculating new parameters for likelihood
+        # Because Gibbs Sampling is used for Dirichlet Process Gaussian Mixture model (in this case), delitem is used for sampling
+
         self.num -= 1
         self.x_hat = (self.x_hat - data / self.num) * self.num / (self.num - 1)
         self.sum -= np.dot(np.reshape(np.array(data), (dim, -1)), np.reshape(np.array(data), (-1, dim)))
 
-    #def update_prior(self, data):
-    #    l, mu, v, psi = self.likelihood(data)
-    #    self.psi = psi
-    #    self.l = l
-    #    self.mu0 = mu
-    #    self.v = v
-
     def likelihood(self, data):
+
+        # likelihood method returns parameters needed for calculating likelihood of Poseterior predictive, which is multivariate-T-dist
+        
         l = self.l + self.num
         mu = (self.l * self.mu0 + self.num * self.x_hat) / l
         v = self.v + self.num
