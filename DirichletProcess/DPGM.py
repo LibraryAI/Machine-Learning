@@ -7,11 +7,43 @@ from math import *
 #    (1) 신규 클러스터 확률
 #    (2) 기존 클러스터들에 대한 확률 
 #(3) 해당 포인트를 위한 likelihood 계산, mixture component 즉 특정 클러스터의 가우시안 pdf 계산
-#(4) maximum likelihood를 가지는 posterior 
+#(4) maximum likelihood를 가지는 posterior ... 가 아니라 random sampling을 통한 확률 구간 
 
 
 class DirichletPRocessGaussianMixture:
+    '''
+    Dirichlet Process Gaussian Mixture code
+
+    - Base function: Normal Inverse Wishart distribution is used 
+    - Mixing Coefficient(Prior): Chinese Restaurant Process is used for probability of assigning a new data to each cluster
+    - Mixture Component(Likelihood): Multivariate Gaussian distribution is used, with NIW as a base function (prior of the gaussian)
+    - Posterior: Prior × Likelihood, the probability a new dataset is sampled from a specific component
+
+    1) Prior and Likelihood, and Posterior are calculated for existing n clusters and possible new cluster
+    2) From the posterior of all clusters assign new data point 
+    3) Using Collapsed Gibbs Sampling
+        1) With the dataset run iteration
+        2) If the data point is already assigned to any cluster, 
+           (meaning the data is sampled at least once) delete the data from the cluster and get the likelihood and prior
+           what if that data is sampled from that cluster
+    
+    - Collapsed gibbs sampling is enables for the de finetti's theorem holds for the chinese restaurant process
+    - However, DPGM model is itself constrained that it is a stochastic process, this itself is not for the clustering purpose
+      (modification will do)
+
+    - My model does not assign clusters to all datapoints when initializing the class. I believe it is not recommended
+
+    '''
     def __init__(self, alpha, prior, data, num_iter, z):
+        
+        # num_iter: number of iterations all data in the dataset should be done (num_iter > 1 needed)
+        # prior: prior distribution
+        # n_k: number of data points assigned to each cluster maintained. 
+        #      If 0 data is assigned to a cluster, that cluster will be deleted
+        # z: cluster name assigned to each datapoint. 
+        #    max length is the size of the dataset
+        # k_mixtures: mixture component. each element is a copy of a base distribution 
+        
         self.num_iter = num_iter
         self.alpha = alpha
         self.prior = prior(data.shape[1])
@@ -25,6 +57,10 @@ class DirichletPRocessGaussianMixture:
         self.new_cluster = copy.deepcopy(self.prior)
 
     def calc_likelihood(self, data, idx):
+
+        # calculate the likelihood of a mixture component
+        # multivariate t distribution is used
+
     	l, mu, v, psi = self.k_mixtures[idx].likelihood(data)
         ll = self.multivariate_t_distribution(data, 
                                               mu, 
@@ -33,8 +69,9 @@ class DirichletPRocessGaussianMixture:
         return ll
 
     def calc_prior_and_likelihood(self, data, idx):
-        # calculate prior prob for new sample of each cluster k using chinese restaurant process 
-        ######## 첫 데이터가 들어올때 경우 맞ㄴ나 확인해보기
+
+        # calculate prior prob and likelihood for new sample of each cluster k using chinese restaurant process 
+
         crp_prior = []
         likelihood = []
         if sum(self.n_k) < self.num_samples:
@@ -74,7 +111,7 @@ class DirichletPRocessGaussianMixture:
                 crp_prior.append(crp)
             crp_prior.append(self.alpha / (self.alpha + sum(self.n_k)))            
 
-        # for new cluster likelihood
+        # for likelihood of a new cluster
         l = self.new_cluster.l
         v = self.new_cluster.v
         psi = self.new_cluster.psi
@@ -85,6 +122,8 @@ class DirichletPRocessGaussianMixture:
         return crp_prior, likelihood
 
     def gibbs_sampling(self):
+
+        # Collapsed gibbs sampling for updating posterior and assignment of a data point
 
         for _ in range(self.num_iter):
             for idx, data in range(self.data):
@@ -111,6 +150,7 @@ class DirichletPRocessGaussianMixture:
                     self.z[idx] = k_new
 
     def multivariate_t_distribution(x,mu,Sigma,df,d):
+        
         '''
         Multivariate t-student density:
         output:
