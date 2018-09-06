@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 
 np.random.seed(42)
 
-# 데이터를 불러옵니다.
+# 데이터를 불러오기
 datafile = open('data/spambase.data', 'r')
 data = []
 for line in datafile:
@@ -23,11 +23,16 @@ y = [int(data[i][-1]) for i in range(len(data))]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.25, random_state=42)
 
 class NaiveBayesClassifier(object):
-	# 48개의 feature를 이용합니다
+
+	# 48개의 feature를 이용
+
 	def __init__(self, num_features=48):
         self.num_features = num_features
 
     def log_likelihood_naivebayes(self, feature_vector, Class):
+
+        # 
+        
     	assert len(feature_vector) == self.num_features
 	    log_likelihood = 0.0 #log-likelihood를 사용해 underflow 회피
     	if Class == 0:
@@ -45,8 +50,10 @@ class NaiveBayesClassifier(object):
 
 	    return log_likelihood
 
-	# Maximum A Priori(MAP) inference를 이용해 사후확률이 가장 큰 class를 고르기
 	def class_posteriors(self, feature_vector):
+
+        # Maximum A Priori(MAP) inference를 이용해 사후확률이 가장 큰 class를 고르기
+
     	log_likelihood_ham = self.log_likelihood_naivebayes(feature_vector, Class = 0)
 	    log_likelihood_spam = self.log_likelihood_naivebayes(feature_vector, Class = 1)
 
