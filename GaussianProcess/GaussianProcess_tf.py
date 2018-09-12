@@ -27,22 +27,25 @@ class GaussianProcess:
                3) Bias component
                   = Θ_2
         '''
-        exponential = tf.multiply(tf.div(tf.slice(self.thetas, [1], [1]), 2.0), np.dot((np.subtract(x1, x2)), (np.subtract(x1, x2))))
+        exponential = tf.multiply(tf.div(tf.slice(self.thetas, [1], [1]), 2.0), tf.reduce_sum(tf.multiply(np.subtract(x1, x2), np.subtract(x1, x2))))
         exponential = tf.multiply(tf.slice(self.thetas, [0], [1]), exponential)
         bias = tf.slice(self.thetas, [2], [1])
-        lienar = tf.multiply(tf.slice(self.thetas, [3], [1]), np.dot(x1,x2))
-        outcome = tf.add(tf.add(exponentiial, bias), linear)
+        linear = tf.multiply(tf.slice(self.thetas, [3], [1]), tf.reduce_sum(tf.multiply(x1,x2)))
+        outcome = tf.add(tf.add(exponential, bias), linear)
         return outcome
     
-    def train(self, X, Y):
+    def train(self, X, Y, n_data):
         '''
         하이퍼파라미터 옵티마이제이션            
             1. kernel method를 통해 Xdata의 covariance matrix 계산, 0 mean 
             2. log derivative of p(T|theta) w.r.t. thetas 계산
             3. minimize
         '''
-        numData = Y.shape[0] # len(Y)
+        numData = n_data # len(Y)
         numDimension = X.shape[1] # len(X[0])
+        
+        X = tf.cast(X, tf.float32)
+        Y = tf.cast(Y, tf.float32)
         
         # self.cov = tf.reshape([self.kernel(x1,x2) for x1 in obsX for x1 in obsX], shape = [numData, numData])
         # self.cov = tf.inv(tf.multiply(tf.slice(self.thetas, [4], [1]), np.identity(numData)) + self.cov
@@ -54,37 +57,43 @@ class GaussianProcess:
                 if i != j:
                     covLinear.append(kernel_output)
                 else:
-                    covLinear.append(kernel_output + tf.div(1.0, tf.slice(tf.thetas, [4], [1])))
+                    covLinear.append(tf.add(kernel_output, tf.div(1.0, tf.slice(self.thetas, [4], [1]))))
         
         cov = tf.stack(covLinear)
-        self.cov = tf.reshape(cov, [numData,numData])
-        covInv = tf.inv(self.cov)
+        cov = tf.convert_to_tensor(tf.reshape(cov, [numData,numData]), dtype=tf.float32)
+        self.cov = cov
         
-        negloglikelihood = 0
+        covInv = self.pinv(cov)
+        self.covInv = covInv
+
+
+        #covInv = tf.matrix_inverse(self.cov)
+        
+        negloglikelihood = tf.constant([0], dtype = tf.float32)
         for i in range(numData):
             k = tf.Variable(tf.ones([numData]))
             for j in range(numData):
                 kernel_output = self.kernel(tf.slice(X, [i, 0], [1, numDimension]), 
                                             tf.slice(X, [j, 0], [1, numDimension]))
                 indices = tf.constant([j])
-                tempTensor = tf.Variable(tf.zeros([1]))
+                tempTensor = tf.zeros([1])
                 tempTensor = tf.add(tempTensor, kernel_output)
-                tf.scatter_update(k, tf.reshape(indices, [1,1]), tempTensor)
+                tf.scatter_update(k, indices, tempTensor)
             
-            c = tf.Variable(tf.zeros([1,1]))
+            c = tf.zeros([1])
             kernel_output = self.kernel(tf.slice(X, [i, 0], [1, numDimension]), 
                                         tf.slice(X, [i, 0], [1, numDimension]))
-            c = tf.add(tf.add(c, kernel_output), tf.div(1.0, tf.slice(tf.thetas, [4], [1])))
+            c = tf.add(tf.add(c, kernel_output), tf.div(1.0, tf.slice(self.thetas, [4], [1])))
             k= tf.reshape(k, [1, numData])
             
-            pred_mu = tf.matmul(k, tf.matmul(covInv, Y))
-            pred_var = tf.sub(c, tf.matmul(tf.matmul(k, covInv), tf.transpose(k)))
+            pred_mu = tf.matmul(tf.matmul(k, covInv), Y)
+            pred_var = tf.subtract(c, tf.matmul(tf.matmul(k, covInv), tf.transpose(k)))
             
-            negloglikelihood = tf.add(negloglikelihood, tf.div(tf.pow(tf.sub(pred_mu, tf.slice(Y, [i,0], [1,1])), 2), tf.scalar_mul(tf.constant(2.0), pred_var)))
+            negloglikelihood = tf.add(negloglikelihood, tf.div(tf.pow(tf.subtract(pred_mu, tf.slice(Y, [i, 0], [1, 1])[0]), 2), tf.scalar_mul(tf.constant(2.0), pred_var)))
      
-            return negloglikelihood
-        
-    def predict(self, obs_X, train_X, train_Y):
+            return negloglikelihood[0]
+
+    def predict(self, obs_X, train_X, train_Y, n_data):
 
         '''
         새로운 데이터포인트(점)에 대한 
@@ -100,16 +109,21 @@ class GaussianProcess:
         - Gaussian Process를 사용한 Regression 목적이라면 μ_t_new 가 정답~
         '''
         numDimension = obs_X.shape[1] # len(X[0])
-        numData = tf.shape(train_X)[0]
+        numData = n_data
         new_cov = []
+        
+        obs_X = tf.cast(obs_X, tf.float32)
+        train_X = tf.cast(train_X, tf.float32)
+        train_Y = tf.cast(train_Y, tf.float32)
 
-        for i in range(tf.shape(self.cov)[0]):
+        for i in range(n_data):
             kernel_output = self.kernel(obs_X, tf.slice(train_X, [i, 0], [1, numDimension]))
             new_cov.append(kernel_output)
         new_cov = tf.reshape(tf.stack(new_cov), [1, numData])
-        pred_mu = tf.matmul(tf.matmul(new_cov, tf.inv(self.cov)), train_Y)
-        pred_sigma = tf.sub(tf.reshape(self.kernel(obs_X, obs_X), [1, 1]), 
-                            tf.matmul(tf.matmul(new_cov, tf.inv(self.cov)), tf.transpose(new_cov)))
+        pred_mu = tf.matmul(tf.matmul(new_cov, self.covInv), train_Y)
+        #pred_mu = tf.matmul(tf.matmul(k, covInv), Y)
+        pred_sigma = tf.subtract(tf.reshape(self.kernel(obs_X, obs_X), [1, 1]), 
+                            tf.matmul(tf.matmul(new_cov, self.covInv), tf.transpose(new_cov)))
         return pred_mu, pred_sigma
         
     def sample(self, mean, cov):
@@ -120,39 +134,60 @@ class GaussianProcess:
         
         num_data = len(tf.shape(cov)[0])
         if num_data == 1:
-            return tf.add(mean, tf.random_normal([1], me
-                training_op = adam.minimize(loss = mnist_classifier.loss)an=mean, stddev=cov))
+            return tf.add(mean, tf.random_normal([1], mean, stddev=cov))
         
         z = tf.random_normal([num_data])
         s, u, v = tf.linalg.svd(cov)
         a = matmul(u, tf.matmul(tf.linalg.diag(s), v, adjoint_b=True))
         return tf.add(mean, tf.matmul(a, z))
 
+    def pinv(self, A, reltol=1e-6):
+        # Compute the SVD of the input matrix A
+        s, u, v = tf.linalg.svd(A)
+ 
+        # Invert s, clear entries lower than reltol*s[0].
+        
+        #atol = tf.reduce_max(s) * reltol
+        #s = tf.boolean_mask(s, s > atol)
+
+        s_inv = tf.diag(tf.div(1., s))
+        return tf.matmul(v, tf.matmul(s_inv, u, transpose_b=True))
+
 ################################################################################################################################################################
-n_epochs = 1000
+n_epochs = 500
 lr = .01
 #batch_size = 64
 #n_steps = int(X_train.shape[0] / batch_size)
 
 
 total_features, total_prices = load_boston(True)
-train_features = scale(total_features[:400])
-train_prices = total_prices[:400]
-test_features = scale(total_features[400:])
-test_prices = total_prices[400:]
+total_features = scale(total_features)
+
+train_features = total_features[:15]
+train_prices = total_prices[:15]
+test_features = total_features[15:20]
+test_prices = total_prices[15:20]
 
 numDimension = train_features.shape[1]
+numTrain = train_features.shape[0]
+numTest = test_features.shape[0]
 
-obs_X = tf.placeholder(tf.float32, [1, numDimension])
-train_X = tf.placeholder(tf.float32, [train_features.shape[0], numDimension])
-train_Y = tf.placeholder(tf.float32, [train_prices.shape[0], 1])
+train_prices = np.reshape(train_prices, (numTrain, 1))
+test_prices = np.reshape(test_prices, (numTest, 1))
 
-test_X = tf.placeholder(tf.float32, [test_features.shape[0], numDimension])
-test_Y = tf.placeholder(tf.float32, [test_features.shape[0], 1])
+train_X = tf.placeholder(tf.float32, [None, numDimension])
+train_Y = tf.placeholder(tf.float32, [None, 1])
+
+train_XX = tf.placeholder(tf.float32, [None, numDimension])
+train_YY = tf.placeholder(tf.float32, [None, 1])
+test_X = tf.placeholder(tf.float32, [None, numDimension])
+#test_Y = tf.placeholder(tf.float32, [None, 1])
 
 GP = GaussianProcess()
-negloglikelihood = GP.train(train_X, train_Y)
+negloglikelihood = GP.train(train_X, train_Y, numTrain)
 training_op = tf.train.GradientDescentOptimizer(learning_rate=lr).minimize(loss=negloglikelihood)
+pred_op = GP.predict(test_X, train_XX, train_YY, numTrain)
+
 
 #sess_config = tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True))
 #sess = tf.Session(config = sess_config)
@@ -163,7 +198,7 @@ sess.run(init)
 ################################################################################################################################################################
 points = [[], []]
 for epoch in range(n_epochs):
-    _, tr_loss = sess.run([trainin_op, negloglikelihood], feed_dict = {train_X : train_features,
+    _, tr_loss = sess.run([training_op, negloglikelihood], feed_dict = {train_X : train_features,
                                                                        train_Y : train_prices})
     
     if epoch % 10 == 0:
@@ -171,20 +206,21 @@ for epoch in range(n_epochs):
         points[1].append(tr_loss)
 
     if epoch % 100 == 0:
-        print(sess.run(tr_loss))
+        print(tr_loss)
+
 
 plt.plot(points[0], points[1], 'r--')
-plt.axis([0, epochs, 50, 600])
 plt.show()
 
+
 ################################################################################################################################################################
-pred_op = GP.predict(test_X, train_X, train_Y)
 points_pred = [[], []]
-for i in range(test_features[0]):
+for i in range(numTest):
     
-    pred_mu, _ = sess.run(pred_op, feed_dict = {test_X : test_features[i],
-                                                train_X : train_features
-                                                train_Y : train_prices})
+    test_feature = np.reshape(test_features[i], (1, numDimension))
+    pred_mu, _ = sess.run(pred_op, feed_dict = {train_XX : train_features,
+                                                train_YY : train_prices,
+                                                test_X : test_feature})
     points_pred[0].append(i)
     points_pred[1].append(pred_mu)
 
