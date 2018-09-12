@@ -38,15 +38,15 @@ class NaiveBayesClassifier(object):
     	if Class == 0:
         	for feature_index in range(len(feature_vector)):
             	if feature_vector[feature_index] == 1: #feature present
-                	log_likelihood += np.log10(likelihoods_ham[feature_index])
+                	log_likelihood += np.log10(self.likelihoods_ham[feature_index])
             	elif feature_vector[feature_index] == 0: #feature absent
-                	log_likelihood += np.log10(1.0 - likelihoods_ham[feature_index])
+                	log_likelihood += np.log10(1.0 - self.likelihoods_ham[feature_index])
     	elif Class == 1:
         	for feature_index in range(len(feature_vector)):
             	if feature_vector[feature_index] == 1:
-                	log_likelihood += np.log10(likelihoods_spam[feature_index])
+                	log_likelihood += np.log10(self.likelihoods_spam[feature_index])
             	elif feature_vector[feature_index] == 0:
-                	log_likelihood += np.log10(1.0 - likelihoods_spam[feature_index])
+                	log_likelihood += np.log10(1.0 - self.likelihoods_spam[feature_index])
 
 	    return log_likelihood
 
@@ -57,8 +57,8 @@ class NaiveBayesClassifier(object):
     	log_likelihood_ham = self.log_likelihood_naivebayes(feature_vector, Class = 0)
 	    log_likelihood_spam = self.log_likelihood_naivebayes(feature_vector, Class = 1)
 
-    	log_posterior_ham = log_likelihood_ham + log_prior_ham
-	    log_posterior_spam = log_likelihood_spam + log_prior_spam
+    	log_posterior_ham = log_likelihood_ham + self.log_prior_ham
+	    log_posterior_spam = log_likelihood_spam + self.log_prior_spam
 
     	return log_posterior_ham, log_posterior_spam
 
@@ -77,9 +77,9 @@ class NaiveBayesClassifier(object):
 		X_train_ham = [X_train[i] for i in range(len(X_train)) if y_train[i] == 0]
 
 		# 각 클래스의 feature에 대한 likelihood 구하기	
-		self.likelihoods_ham = np.mean(X_train_ham, axis = 0)/100,0
+		self.likelihoods_ham = np.mean(X_train_ham, axis = 0)/100.0
 		self.likelihoods_spam = np.mean(X_train_spam, axis = 0)/100.0
-		self.likelihoods_ham = self.likelihoods_ham[0]        
+		self.likelihoods_ham = self.likelihoods_ham
 
 		# 각 class의 prior를 계산
 		num_ham = float(len(X_train_ham))
