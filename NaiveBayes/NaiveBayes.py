@@ -11,6 +11,7 @@ np.random.seed(42)
 
 # 데이터를 불러오기
 datafile = open('data/spambase.data', 'r')
+num_features = 48
 data = []
 for line in datafile:
     line = [float(element) for element in line.rstrip('\n').split(',')]
@@ -34,68 +35,68 @@ class NaiveBayesClassifier(object):
         # 
         
     	assert len(feature_vector) == self.num_features
-	    log_likelihood = 0.0 #log-likelihood를 사용해 underflow 회피
+	log_likelihood = 0.0 #log-likelihood를 사용해 underflow 회피
     	if Class == 0:
         	for feature_index in range(len(feature_vector)):
-            	if feature_vector[feature_index] == 1: #feature present
-                	log_likelihood += np.log10(self.likelihoods_ham[feature_index])
-            	elif feature_vector[feature_index] == 0: #feature absent
-                	log_likelihood += np.log10(1.0 - self.likelihoods_ham[feature_index])
+            		if feature_vector[feature_index] == 1: #feature present
+                		log_likelihood += np.log10(self.likelihoods_ham[feature_index])
+            		elif feature_vector[feature_index] == 0: #feature absent
+                		log_likelihood += np.log10(1.0 - self.likelihoods_ham[feature_index])
     	elif Class == 1:
         	for feature_index in range(len(feature_vector)):
-            	if feature_vector[feature_index] == 1:
-                	log_likelihood += np.log10(self.likelihoods_spam[feature_index])
-            	elif feature_vector[feature_index] == 0:
-                	log_likelihood += np.log10(1.0 - self.likelihoods_spam[feature_index])
+            		if feature_vector[feature_index] == 1:
+                		log_likelihood += np.log10(self.likelihoods_spam[feature_index])
+            		elif feature_vector[feature_index] == 0:
+                		log_likelihood += np.log10(1.0 - self.likelihoods_spam[feature_index])
 
-	    return log_likelihood
+	return log_likelihood
 
-	def class_posteriors(self, feature_vector):
+    def class_posteriors(self, feature_vector):
 
         # Maximum A Priori(MAP) inference를 이용해 사후확률이 가장 큰 class를 고르기
 
     	log_likelihood_ham = self.log_likelihood_naivebayes(feature_vector, Class = 0)
-	    log_likelihood_spam = self.log_likelihood_naivebayes(feature_vector, Class = 1)
+	log_likelihood_spam = self.log_likelihood_naivebayes(feature_vector, Class = 1)
 
     	log_posterior_ham = log_likelihood_ham + self.log_prior_ham
-	    log_posterior_spam = log_likelihood_spam + self.log_prior_spam
+	log_posterior_spam = log_likelihood_spam + self.log_prior_spam
 
     	return log_posterior_ham, log_posterior_spam
 
-	def spam_classify(self, document):
+    def spam_classify(self, document):
     	feature_vector = [int(element>0.0) for element in document]
-	    log_posterior_ham, log_posterior_spam = self.class_posteriors(feature_vector)
+	log_posterior_ham, log_posterior_spam = self.class_posteriors(feature_vector)
     	if log_posterior_ham > log_posterior_spam:
         	return 0
     	else:
         	return 1
 
     def train(self, X_train, y_train):
-		# Likelihood estimator 만들기
-		# 스팸 클래스와 햄 클래스 나누기
-		X_train_spam = [X_train[i] for i in range(len(X_train)) if y_train[i] == 1]
-		X_train_ham = [X_train[i] for i in range(len(X_train)) if y_train[i] == 0]
+	# Likelihood estimator 만들기
+	# 스팸 클래스와 햄 클래스 나누기
+	X_train_spam = [X_train[i] for i in range(len(X_train)) if y_train[i] == 1]
+	X_train_ham = [X_train[i] for i in range(len(X_train)) if y_train[i] == 0]
 
-		# 각 클래스의 feature에 대한 likelihood 구하기	
-		self.likelihoods_ham = np.mean(X_train_ham, axis = 0)/100.0
-		self.likelihoods_spam = np.mean(X_train_spam, axis = 0)/100.0
-		self.likelihoods_ham = self.likelihoods_ham
+	# 각 클래스의 feature에 대한 likelihood 구하기	
+	self.likelihoods_ham = np.mean(X_train_ham, axis = 0)/100.0
+	self.likelihoods_spam = np.mean(X_train_spam, axis = 0)/100.0
+	self.likelihoods_ham = self.likelihoods_ham
 
-		# 각 class의 prior를 계산
-		num_ham = float(len(X_train_ham))
-		num_spam = float(len(X_train_spam))
+	# 각 class의 prior를 계산
+	num_ham = float(len(X_train_ham))
+	num_spam = float(len(X_train_spam))
 
-		prior_probability_ham = num_ham / (num_ham + num_spam)
-		prior_probability_spam = num_spam / (num_ham + num_spam)
+	prior_probability_ham = num_ham / (num_ham + num_spam)
+	prior_probability_spam = num_spam / (num_ham + num_spam)
 
-		self.log_prior_ham = np.log10(prior_probability_ham)
-		self.log_prior_spam = np.log10(prior_probability_spam)
+	self.log_prior_ham = np.log10(prior_probability_ham)
+	self.log_prior_spam = np.log10(prior_probability_spam)
 
         return None
 
     def predict(self, X_test):
     	predictions = []
-		for case in X_test:
+	for case in X_test:
     		predictions.append(self.spam_classify(case))
     	
     	return predictions
